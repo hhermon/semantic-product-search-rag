@@ -1,11 +1,7 @@
-# LLM & AI
-openai>=1.30.0
-
 # Embeddings & Semantisk retrieval
 sentence-transformers>=3.0.0
 
 # Vektorsökning (numpy-baserad, ingen kompilering krävs)
-# chromadb kan läggas till senare om C++ Build Tools installeras
 
 # Datahantering
 pandas>=2.0.0,<3.0.0
