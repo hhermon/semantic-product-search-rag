@@ -54,7 +54,7 @@ class ProductAgent:
         Args:
             product_id: Product ID, e.g. 1, 42.
         """
-        product = self.retriever._product_map.get(product_id)
+        product = self.retriever._product_map.get(str(product_id))
         if product is None:
             return f"Product with ID '{product_id}' not found."
         return product.to_detail()
@@ -67,7 +67,7 @@ class ProductAgent:
             attributes: Comma-separated attributes to compare, e.g. price,brand.
         """
         ids = [pid.strip() for pid in product_ids.split(",")]
-        products = [self.retriever._product_map.get(pid) for pid in ids]
+        products = [self.retriever._product_map.get(str(pid)) for pid in ids]
         products = [p for p in products if p is not None]
         if not products:
             return "None of the specified products were found."
