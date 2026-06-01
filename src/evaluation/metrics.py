@@ -12,6 +12,7 @@ class QueryEval:
     recall: float
     f1: float
     average_precision: float
+    group: str = ""
 
 
 @dataclass

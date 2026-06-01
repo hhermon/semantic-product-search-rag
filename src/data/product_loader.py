@@ -1,9 +1,6 @@
-"""Laddning och modellering av produktdata från DummyJSON API."""
+"""Laddning och modellering av produktdata från Amazon Products Dataset 2023."""
 
-import json
-import urllib.request
 from pathlib import Path
-from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -21,7 +18,6 @@ class Product(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
     def to_search_text(self) -> str:
-        """Kombinerar namn, beskrivning och taggar till en sökbar textsträng."""
         attr_text = " ".join(f"{k}: {v}" for k, v in self.attributes.items())
         tags_text = " ".join(self.tags)
         return f"{self.name} {self.category} {self.brand} {self.description} {attr_text} {tags_text}"
@@ -48,49 +44,84 @@ class Product(BaseModel):
         )
 
 
-def _fetch_dummyjson(limit: int = 194) -> list[Product]:
-    """Hämtar produkter från DummyJSON API och konverterar till Product-modell."""
-    url = f"https://dummyjson.com/products?limit={limit}&select=id,title,description,price,brand,category,tags,dimensions,weight,rating,stock"
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read())
+# Kategori-ID:n och antal produkter per kategori (stratifierat urval)
+_SAMPLE_CATEGORIES = {
+    113: 500,  # Men's Watches
+    114: 500,  # Men's Shoes
+    122: 500,  # Women's Shoes
+     71: 500,  # Headphones & Earbuds
+    107: 500,  # Backpacks
+     49: 500,  # Skin Care Products
+    270: 500,  # Toys & Games
+    110: 500,  # Men's Clothing
+    108: 500,  # Luggage
+    170: 500,  # Kitchen & Dining
+}
+
+
+def _load_amazon(seed: int = 42) -> list[Product]:
+    """Laddar stratifierat urval från Amazon Products Dataset (lokal CSV)."""
+    import pandas as pd
+
+    data_dir = Path(__file__).parent
+    df = pd.read_csv(data_dir / "amazon_products.csv", low_memory=False)
+    cats = pd.read_csv(data_dir / "amazon_categories.csv")
+    cat_map = dict(zip(cats["id"], cats["category_name"]))
+
+    df = df.dropna(subset=["title", "price"])
+    df = df[df["price"] > 0]
+    df = df[df["title"].str.len() > 5]
+
+    frames = []
+    for cat_id, n in _SAMPLE_CATEGORIES.items():
+        subset = df[df["category_id"] == cat_id]
+        frames.append(subset.sample(n=min(n, len(subset)), random_state=seed))
+
+    sampled = pd.concat(frames).reset_index(drop=True)
 
     products = []
-    for item in data.get("products", []):
+    for row in sampled.itertuples(index=False):
+        category = cat_map.get(row.category_id, "unknown")
         attributes = {}
-        if item.get("weight"):
-            attributes["weight"] = item["weight"]
-        if item.get("dimensions"):
-            d = item["dimensions"]
-            attributes["dimensions"] = f"{d.get('width')}x{d.get('height')}x{d.get('depth')} cm"
-        if item.get("rating"):
-            attributes["rating"] = item["rating"]
-        if item.get("stock"):
-            attributes["stock"] = item["stock"]
+        stars = getattr(row, "stars", None)
+        reviews = getattr(row, "reviews", None)
+        bought = getattr(row, "boughtInLastMonth", None)
+        import math
+        if stars and not (isinstance(stars, float) and math.isnan(stars)):
+            attributes["rating"] = round(float(stars), 1)
+        if reviews and not (isinstance(reviews, float) and math.isnan(reviews)):
+            attributes["reviews"] = int(reviews)
+        if bought and not (isinstance(bought, float) and math.isnan(bought)):
+            attributes["bought_last_month"] = int(bought)
 
+        title = str(row.title)[:200]
         products.append(Product(
-            id=str(item["id"]),
-            name=item.get("title", ""),
-            category=item.get("category", ""),
-            price=float(item.get("price", 0)),
+            id=str(row.asin),
+            name=title,
+            category=category,
+            price=float(row.price),
             currency="USD",
-            brand=item.get("brand") or item.get("category", ""),
+            brand=category,
             attributes=attributes,
-            description=item.get("description", ""),
-            tags=item.get("tags") or [],
+            description=title,
+            tags=[category],
         ))
+
     return products
 
 
 class ProductLoader:
-    """Laddar produkter från DummyJSON API."""
+    """Laddar produkter från Amazon Products Dataset 2023 (Kaggle, ODC-By licens).
 
-    def __init__(self, data_path: Optional[str] = None, limit: int = 194):
-        self.limit = limit
+    Använder stratifierat urval: 500 produkter per kategori, totalt 5 000 produkter
+    fördelade över 10 kategorier (klockor, skor, hörlurar, ryggsäckar m.fl.).
+    """
+
+    def __init__(self, seed: int = 42):
+        self.seed = seed
 
     def load(self) -> list[Product]:
-        """Hämtar och returnerar alla produkter från API:et."""
-        return _fetch_dummyjson(self.limit)
+        return _load_amazon(self.seed)
 
     def load_by_category(self, category: str) -> list[Product]:
         return [p for p in self.load() if p.category.lower() == category.lower()]
