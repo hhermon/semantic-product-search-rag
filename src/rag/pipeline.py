@@ -26,7 +26,7 @@ Be concrete, comparative and adapt your answer to the customer's specific needs.
     def __init__(self, retriever: ProductRetriever, model: str | None = None, top_k: int | None = None):
         self.retriever = retriever
         self.model_name = model or os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
-        self.top_k = top_k or int(os.getenv("TOP_K", "5"))
+        self.top_k = top_k or int(os.getenv("TOP_K", "10"))
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
     def _build_context(self, results: list[SearchResult]) -> str:
